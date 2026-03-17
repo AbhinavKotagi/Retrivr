@@ -4,13 +4,13 @@ This document outlines the step-by-step process to build **Retrievr**, an AI-pow
 
 ## Phase 1: Project Setup & Initialization
 
-- [ ] **Initialize Version Control**
-    - [ ] Initialize Git repository in the root folder (`git init`).
-    - [ ] Create a `.gitignore` file (include `venv/`, `__pycache__/`, `.env`, `build/`, `.dart_tool/`, `.idea/`).
-- [ ] **Create Folder Structure**
-    - [ ] Create `backend/` directory for Python code.
-    - [ ] Create `frontend/` directory for Flutter code.
-    - [ ] Ensure `docs/` directory contains all design files.
+- [x] **Initialize Version Control**
+    - [x] Initialize Git repository in the root folder (`git init`).
+    - [x] Create a `.gitignore` file (include `venv/`, `__pycache__/`, `.env`, `build/`, `.dart_tool/`, `.idea/`).
+- [x] **Create Folder Structure**
+    - [x] Create `backend/` directory for Python code.
+    - [x] Create `frontend/` directory for Flutter code.
+    - [x] Ensure `docs/` directory contains all design files.
 
 ## Phase 2: Backend Development (Prototype)
 
