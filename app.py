@@ -1,27 +1,23 @@
 """
 app.py
 ------
-Retrievr — Sidebar Search Layout.
+Retrievr — Final (Part 4): Demo-ready integration.
 
-Layout
-------
-  SIDEBAR  — Search Images (text query → top-5 results)
-             Caption Lookup (query → best image_id + caption)
-             Reset App button
+Sections
+--------
+  1 · Upload Images    — file uploader + thumbnail preview grid
+  2 · Process Images   — BLIP caption + CLIP embed + FAISS index
+  3 · Search Images    — natural-language query → ranked results
+  4 · Results          — 3-per-row card grid with score badges
 
-  MAIN     — Top:    Section 1 · Upload Images
-                     Section 2 · Process Images
-             Bottom: Section 3 · Search Results     (image grid)
-                     Section 4 · Caption Lookup Result
-
-State (st.session_state)
-------------------------
-  uploaded_images       list[dict]      Files saved this session
-  processed_flag        bool            All uploads are indexed
-  search_results        list|None       Last search output
-  last_query            str             Query that produced search_results
-  caption_lookup_result SearchResult|None
-  caption_lookup_query  str
+State machine (st.session_state)
+---------------------------------
+  uploaded_images : list[dict]   — {image_id, file_path, name} for every
+                                   file saved to disk this session.
+  processed_flag  : bool         — True once every pending image has been
+                                   processed (or was already in the DB).
+  search_results  : list | None  — last search output; None = no search yet.
+  last_query      : str          — the query that produced search_results.
 """
 
 from __future__ import annotations
@@ -33,10 +29,10 @@ from PIL import Image
 
 from database import init_db
 from processor import save_uploaded_file, process_image, is_already_processed
-from search import search_images, search_top_caption, index_exists
+from search import search_images, index_exists
 
 # ============================================================================
-# Bootstrap
+# Bootstrap — runs on every Streamlit script execution
 # ============================================================================
 
 Path("storage/images").mkdir(parents=True, exist_ok=True)
@@ -44,131 +40,91 @@ Path("vectors").mkdir(parents=True, exist_ok=True)
 init_db()
 
 # ============================================================================
-# Page config  — sidebar starts expanded so it is visible immediately
+# Page config
 # ============================================================================
 
 st.set_page_config(
     page_title="Retrievr",
     page_icon="🔍",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 # ============================================================================
-# Session-state
+# Session-state initialisation
 # ============================================================================
 
-_DEFAULTS: dict = {
-    "uploaded_images":       [],
-    "processed_flag":        False,
-    "search_results":        None,
-    "last_query":            "",
-    "caption_lookup_result": None,
-    "caption_lookup_query":  "",
-}
+def _init_state() -> None:
+    """Ensure every session-state key exists with a safe default."""
+    defaults: dict = {
+        # List of dicts: {image_id: str, file_path: str, name: str}
+        "uploaded_images": [],
+        # True once all images in uploaded_images are in the DB + FAISS index
+        "processed_flag": False,
+        # Last search output (list[SearchResult]) or None
+        "search_results": None,
+        # The query string that produced search_results
+        "last_query": "",
+    }
+    for key, default in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default
 
-for _k, _v in _DEFAULTS.items():
-    if _k not in st.session_state:
-        st.session_state[_k] = _v
+_init_state()
 
 # ============================================================================
 # Helpers
 # ============================================================================
 
-COLS_PER_ROW = 3
+COLS_PER_ROW = 3   # results grid width
 
 
 def _render_image_safe(file_path: str, caption: str = "") -> None:
+    """Render an image from disk; show a placeholder on any error."""
     try:
         st.image(Image.open(file_path), caption=caption, use_container_width=True)
     except Exception:
-        st.warning("⚠️ Image file not found on disk.")
+        st.warning("Image file not found.")
 
 
 def _score_badge(score: float) -> str:
+    """Return a colour-coded emoji label based on the cosine similarity."""
     pct = score * 100
-    icon = "🟢" if pct >= 75 else ("🟡" if pct >= 50 else "🔴")
-    return f"{icon} {pct:.1f}% match"
+    if pct >= 75:
+        colour = "🟢"
+    elif pct >= 50:
+        colour = "🟡"
+    else:
+        colour = "🔴"
+    return f"{colour} {pct:.1f}% match"
 
 
 def _reset_app() -> None:
+    """
+    Clear all session state and rerun — returns the app to its initial state.
+    Does NOT delete files from disk or the database (non-destructive reset).
+    """
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
 
 
 # ============================================================================
-# SIDEBAR — both search bars live here
+# Header
 # ============================================================================
 
-with st.sidebar:
-    st.title("🔍 Retrievr")
-    st.caption("Semantic image search")
-    st.divider()
+title_col, reset_col = st.columns([8, 1], vertical_alignment="bottom")
 
-    # ── Search Images ────────────────────────────────────────────────────────
-    st.header("Search Images")
-    st.caption("Find the top 5 most relevant images for your query.")
-
-    sidebar_query = st.text_input(
-        label="Image search query",
-        placeholder='e.g. "a dog in the park"',
-        label_visibility="collapsed",
-        key="sidebar_search_input",
-    )
-    search_clicked = st.button(
-        "🔎 Search", type="primary", use_container_width=True, key="sidebar_search_btn"
+with title_col:
+    st.title("🔍 Retrievr Prototype")
+    st.caption(
+        "Upload images · generate AI captions · search in plain English."
     )
 
-    if search_clicked:
-        if not sidebar_query.strip():
-            st.warning("⚠️ Please enter a query.")
-        elif not index_exists():
-            st.warning("⚠️ No index yet — process images first.")
-        else:
-            with st.spinner("Searching…"):
-                st.session_state.search_results = search_images(sidebar_query.strip(), k=5)
-            st.session_state.last_query = sidebar_query.strip()
-
-    st.divider()
-
-    # ── Caption Lookup ───────────────────────────────────────────────────────
-    st.header("Caption Lookup")
-    st.caption("Returns the best-matching image ID and caption.")
-
-    lookup_query = st.text_input(
-        label="Caption lookup query",
-        placeholder='e.g. "sunset over water"',
-        label_visibility="collapsed",
-        key="sidebar_lookup_input",
-    )
-    lookup_clicked = st.button(
-        "🔍 Find", type="primary", use_container_width=True, key="sidebar_lookup_btn"
-    )
-
-    if lookup_clicked:
-        if not lookup_query.strip():
-            st.warning("⚠️ Please enter a query.")
-        elif not index_exists():
-            st.warning("⚠️ No index yet — process images first.")
-        else:
-            with st.spinner("Finding best match…"):
-                st.session_state.caption_lookup_result = search_top_caption(lookup_query.strip())
-            st.session_state.caption_lookup_query = lookup_query.strip()
-
-    st.divider()
-
-    # ── Reset ────────────────────────────────────────────────────────────────
-    if st.button("🔄 Reset App", use_container_width=True, help="Clear session state"):
+with reset_col:
+    if st.button("🔄 Reset App", help="Clear session and start over"):
         _reset_app()
 
-
-# ============================================================================
-# MAIN — header
-# ============================================================================
-
-st.title("🔍 Retrievr Prototype")
-st.caption("Upload images · generate AI captions · search in plain English.")
 st.divider()
 
 # ============================================================================
@@ -181,23 +137,35 @@ uploaded_files = st.file_uploader(
     label="Choose images (JPG / PNG)",
     type=["jpg", "jpeg", "png"],
     accept_multiple_files=True,
-    help="Select one or more images.",
+    help="Select one or more images. You can add more before processing.",
 )
 
 if uploaded_files:
-    already_saved: set[str] = {img["name"] for img in st.session_state.uploaded_images}
+    # ------------------------------------------------------------------
+    # Save any newly seen files to disk (guard against Streamlit re-runs
+    # replaying the same uploader object on every interaction).
+    # ------------------------------------------------------------------
+    already_saved_names: set[str] = {
+        img["name"] for img in st.session_state.uploaded_images
+    }
 
     for uf in uploaded_files:
-        if uf.name not in already_saved:
+        if uf.name not in already_saved_names:
             image_id, file_path = save_uploaded_file(uf)
-            st.session_state.uploaded_images.append({
-                "image_id": image_id,
-                "file_path": str(file_path),
-                "name": uf.name,
-            })
-            already_saved.add(uf.name)
+            st.session_state.uploaded_images.append(
+                {
+                    "image_id": image_id,
+                    "file_path": str(file_path),
+                    "name": uf.name,
+                }
+            )
+            already_saved_names.add(uf.name)
+            # Any new upload invalidates the processed flag
             st.session_state.processed_flag = False
 
+    # ------------------------------------------------------------------
+    # Thumbnail preview grid — 3 per row
+    # ------------------------------------------------------------------
     total = len(st.session_state.uploaded_images)
     st.subheader(f"📁 {total} image(s) queued")
 
@@ -209,9 +177,12 @@ if uploaded_files:
                 _render_image_safe(img["file_path"], caption=img["name"])
 
 else:
+    # Uploader cleared — wipe the in-session list so Section 2 stays honest.
+    # Files remain on disk; the DB is untouched.
     if st.session_state.uploaded_images:
         st.session_state.uploaded_images = []
         st.session_state.processed_flag = False
+
     st.info("⬆️ Upload images above to get started.")
 
 st.divider()
@@ -226,124 +197,160 @@ if not st.session_state.uploaded_images:
     st.warning("⚠️ No images uploaded yet. Complete **Section 1** first.")
 
 else:
+    # Determine which images still need processing
     unprocessed = [
         img for img in st.session_state.uploaded_images
         if not is_already_processed(img["image_id"])
     ]
 
     if not unprocessed:
+        # Every image is already in the DB
         st.session_state.processed_flag = True
         st.success(
-            f"✅ All {len(st.session_state.uploaded_images)} image(s) processed "
-            "and indexed. Use the **sidebar** to search."
+            f"✅ All {len(st.session_state.uploaded_images)} image(s) are "
+            "processed and indexed. Proceed to **Section 3** to search."
         )
+
     else:
         st.write(
-            f"**{len(unprocessed)}** of **{len(st.session_state.uploaded_images)}** "
-            "image(s) need processing."
+            f"**{len(unprocessed)}** of "
+            f"**{len(st.session_state.uploaded_images)}** image(s) need "
+            "processing. Click the button to generate captions and build "
+            "the search index."
         )
 
         if st.button("⚙️ Process Images", type="primary"):
+
             progress_bar = st.progress(0.0, text="Starting…")
-            log_area    = st.empty()
+            log_area = st.empty()
             log_lines: list[str] = []
             ok_count = 0
 
-            with st.spinner("Processing… this may take a moment on first run."):
+            with st.spinner("Processing images… this may take a moment on first run."):
                 for i, img in enumerate(unprocessed):
                     label = img["name"]
                     progress_bar.progress(
                         i / len(unprocessed),
                         text=f"Processing {label} ({i + 1}/{len(unprocessed)})…",
                     )
+
                     try:
-                        caption = process_image(img["image_id"], Path(img["file_path"]))
+                        caption = process_image(
+                            img["image_id"], Path(img["file_path"])
+                        )
                         log_lines.append(f"✅ **{label}** — *{caption}*")
                         ok_count += 1
                     except Exception as exc:
                         log_lines.append(f"❌ **{label}** — `{exc}`")
+
                     log_area.markdown("\n\n".join(log_lines))
 
             progress_bar.progress(1.0, text="Done!")
+
+            # Mark session as fully processed only when every image succeeded
             if ok_count == len(unprocessed):
                 st.session_state.processed_flag = True
+
             st.success(
                 f"✅ Processed **{ok_count}** / **{len(unprocessed)}** image(s). "
-                "You can now search using the **sidebar**."
+                "Embeddings saved to `vectors/faiss.index`."
             )
 
 st.divider()
 
 # ============================================================================
-# SECTION 3 — Search Results  (bottom of main, driven by sidebar)
+# SECTION 3 — Search Images
 # ============================================================================
 
-st.header("3 · Search Results")
+st.header("3 · Search Images")
 
-if st.session_state.search_results is None:
-    st.info("🔎 Use the **Search Images** bar in the sidebar to find images.")
+# Guard 1: nothing uploaded
+if not st.session_state.uploaded_images:
+    st.warning("⚠️ Upload images in **Section 1** first.")
+    st.stop()
 
-elif not st.session_state.search_results:
+# Guard 2: uploaded but not processed
+if not st.session_state.processed_flag and not index_exists():
     st.warning(
-        f'No matches found for **"{st.session_state.last_query}"**. '
-        "Try a different query or process more images."
+        "⚠️ Images have not been processed yet. "
+        "Click **Process Images** in **Section 2** to build the search index."
+    )
+    st.stop()
+
+st.caption("Describe what you are looking for in plain English.")
+
+query_col, btn_col = st.columns([6, 1], vertical_alignment="bottom")
+
+with query_col:
+    query = st.text_input(
+        label="Search query",
+        placeholder='e.g.  "a dog playing in the park"  or  "road at night"',
+        label_visibility="collapsed",
+        key="search_query_input",
     )
 
-else:
-    results = st.session_state.search_results
-    st.subheader(f'Top {len(results)} result(s) for: *"{st.session_state.last_query}"*')
+with btn_col:
+    search_clicked = st.button(
+        "🔎 Search", type="primary", use_container_width=True
+    )
 
-    for row_start in range(0, len(results), COLS_PER_ROW):
-        row_items = results[row_start : row_start + COLS_PER_ROW]
-        cols = st.columns(COLS_PER_ROW)
-        for col, result in zip(cols, row_items):
-            with col:
-                _render_image_safe(result.file_path)
-                st.markdown(
-                    f"<div style='text-align:center;font-size:0.9rem;"
-                    f"font-weight:600;margin:4px 0'>"
-                    f"{_score_badge(result.score)}</div>",
-                    unsafe_allow_html=True,
-                )
-                st.caption(f"📝 {result.caption or 'No caption available'}")
+if search_clicked:
+    if not query.strip():
+        st.warning("⚠️ Please enter a search query before clicking Search.")
+        st.stop()
+
+    with st.spinner("Searching…"):
+        results = search_images(query.strip(), k=5)
+
+    # Persist results in session state — survives Streamlit re-runs
+    st.session_state.search_results = results
+    st.session_state.last_query = query.strip()
 
 st.divider()
 
 # ============================================================================
-# SECTION 4 — Caption Lookup Result  (bottom of main, driven by sidebar)
+# SECTION 4 — Results
 # ============================================================================
 
-st.header("4 · Caption Lookup Result")
+st.header("4 · Results")
 
-if st.session_state.caption_lookup_result is None and not st.session_state.caption_lookup_query:
-    st.info("🔍 Use the **Caption Lookup** bar in the sidebar to find the best matching caption.")
+# No search has been run yet
+if st.session_state.search_results is None:
+    st.info("🔎 Enter a query in **Section 3** and click **Search** to see results here.")
+    st.stop()
 
-elif st.session_state.caption_lookup_result is None and st.session_state.caption_lookup_query:
+results = st.session_state.search_results
+
+# Search ran but returned nothing
+if not results:
     st.warning(
-        f'No caption match found for **"{st.session_state.caption_lookup_query}"**.'
+        f'No matches found for **"{st.session_state.last_query}"**. '
+        "Try a different query or process more images."
     )
+    st.stop()
 
-else:
-    hit = st.session_state.caption_lookup_result
-    q   = st.session_state.caption_lookup_query
+# Results header
+st.subheader(
+    f'Top {len(results)} result(s) for: *"{st.session_state.last_query}"*'
+)
 
-    st.subheader(f'Best match for: *"{q}"*')
+# 3-per-row card grid
+for row_start in range(0, len(results), COLS_PER_ROW):
+    row_items = results[row_start : row_start + COLS_PER_ROW]
+    cols = st.columns(COLS_PER_ROW)
 
-    meta_col, img_col = st.columns([3, 2], vertical_alignment="top")
+    for col, result in zip(cols, row_items):
+        with col:
+            # Image
+            _render_image_safe(result.file_path)
 
-    with meta_col:
-        st.markdown("**🆔 Image ID**")
-        st.code(hit.image_id, language=None)
+            # Score badge — centred, bold
+            st.markdown(
+                f"<div style='text-align:center; font-size:0.9rem; "
+                f"font-weight:600; margin:4px 0;'>"
+                f"{_score_badge(result.score)}</div>",
+                unsafe_allow_html=True,
+            )
 
-        st.markdown("**📝 Caption**")
-        st.info(hit.caption or "No caption available")
-
-        st.markdown("**📊 Similarity Score**")
-        st.progress(
-            min(hit.score, 1.0),
-            text=f"{_score_badge(hit.score)}  ({hit.score * 100:.2f}%)",
-        )
-
-    with img_col:
-        st.markdown("**🖼️ Matched Image**")
-        _render_image_safe(hit.file_path)
+            # Caption
+            st.caption(f"📝 {result.caption or 'No caption available'}")
