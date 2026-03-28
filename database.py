@@ -86,6 +86,50 @@ def get_all_images() -> list[sqlite3.Row]:
         conn.close()
 
 
+def purge_vector_data() -> None:
+    """
+    Developer reset: wipe the contents of the FAISS index and id_map.json
+    in-place, keeping the files on disk so index_exists() stays True.
+
+    Steps:
+      1. Write an empty list to id_map.json  ([] — zero entries).
+      2. Create a brand-new empty IndexFlatIP and overwrite faiss.index.
+
+    This means searches still work immediately after the reset
+    (returning 0 results) without needing a restart.
+    """
+    import json
+    import faiss
+
+    faiss_path = Path("vectors/faiss.index")
+    idmap_path = Path("vectors/id_map.json")
+
+    # Only act if the files actually exist
+    if idmap_path.exists():
+        with open(idmap_path, "w") as f:
+            json.dump([], f)
+
+    if faiss_path.exists():
+        empty_index = faiss.IndexFlatIP(512)          # 512 = CLIP embedding dim
+        faiss.write_index(empty_index, str(faiss_path))
+
+
+def purge_all_data() -> int:
+    """
+    Developer reset: delete every row from the images table.
+
+    Returns:
+        Number of rows deleted.
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.execute("DELETE FROM images")
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
 def get_image_by_id(image_id: str) -> sqlite3.Row | None:
     """
     Retrieve a single image record by its ID.

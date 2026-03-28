@@ -83,6 +83,24 @@ def index_exists() -> bool:
     return FAISS_INDEX_PATH.exists() and ID_MAP_PATH.exists()
 
 
+def search_top_caption(query: str) -> SearchResult | None:
+    """
+    Find the single most relevant caption for a natural-language query.
+
+    This is a focused lookup: embed the query, run FAISS, return only the
+    top-1 hit with its image_id and caption.  No image rendering is implied.
+
+    Args:
+        query: Natural-language description entered by the user.
+
+    Returns:
+        The best-matching SearchResult, or None if the index is empty /
+        no positive-score match exists.
+    """
+    hits = search_images(query, k=1)
+    return hits[0] if hits else None
+
+
 def search_images(query: str, k: int = 5) -> list[SearchResult]:
     """
     Semantic image search using a natural language query.
