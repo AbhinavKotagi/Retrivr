@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from services.embedding_service import embedding_service
-from config import settings
+from retrievr.services.embedding_service import embedding_service
+from retrievr.config import settings
 
 MODEL_NAME = settings.clip_model_name
 

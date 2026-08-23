@@ -25,20 +25,23 @@ The current implementation is a Streamlit prototype with a modular Python servic
 
 ```text
 Retrivr/
-├── app.py                         # Streamlit UI and user workflow
-├── config.py                      # Environment-driven settings and paths
-├── logging_config.py              # Shared logging bootstrap
-├── database.py                    # Compatibility wrapper for metadata service
-├── embedding.py                   # Compatibility wrapper for embedding service
-├── processor.py                   # Compatibility wrapper for processing service
-├── search.py                      # Compatibility wrapper for search service
-├── services/
-│   ├── captioning.py              # BLIP caption generation
-│   ├── embedding_service.py       # CLIP text embedding generation
-│   ├── image_processing.py        # Upload + caption + embed + persist orchestration
-│   ├── metadata.py                # SQLite metadata database service
-│   ├── search_service.py          # Semantic search and caption lookup service
-│   └── vector_index.py            # Incremental FAISS index persistence
+├── src/
+│   └── retrievr/
+│       ├── app.py                 # Streamlit UI and user workflow
+│       ├── config.py              # Environment-driven settings and paths
+│       ├── logging_config.py      # Shared logging bootstrap
+│       ├── database.py            # Compatibility wrapper for metadata service
+│       ├── embedding.py           # Compatibility wrapper for embedding service
+│       ├── processor.py           # Compatibility wrapper for processing service
+│       ├── search.py              # Compatibility wrapper for search service
+│       ├── utils.py               # Shared utility helpers
+│       └── services/
+│           ├── captioning.py      # BLIP caption generation
+│           ├── embedding_service.py # CLIP text embedding generation
+│           ├── image_processing.py # Upload + caption + embed + persist orchestration
+│           ├── metadata.py        # SQLite metadata database service
+│           ├── search_service.py  # Semantic search and caption lookup service
+│           └── vector_index.py    # Incremental FAISS index persistence
 ├── storage/images/                # Uploaded image files
 ├── vectors/faiss.index            # Persisted FAISS index
 ├── vectors/id_map.json            # FAISS row position -> image_id mapping
@@ -50,16 +53,16 @@ Retrivr/
 
 Retrievr is intentionally split into small service modules so each major responsibility has one owner:
 
-- **Configuration management** lives in `config.py`. Defaults work out of the box, and environment variables can override paths, model names, embedding dimensions, and log level.
-- **Logging** is initialized by `logging_config.py` and used throughout the services for model loading, indexing, and error diagnostics.
-- **Metadata persistence** is handled by `services/metadata.py`, which creates and migrates the SQLite `images` table.
-- **Captioning** is isolated in `services/captioning.py` and falls back to `"An image"` if model inference fails.
-- **Embedding** is isolated in `services/embedding_service.py`; CLIP models are lazy-loaded and cached for the process.
-- **Vector indexing** is isolated in `services/vector_index.py`; new embeddings are appended incrementally instead of rebuilding the entire FAISS index.
-- **Image processing orchestration** lives in `services/image_processing.py`.
-- **Search orchestration** lives in `services/search_service.py`, which joins FAISS results back to SQLite metadata.
+- **Configuration management** lives in `src/retrievr/config.py`. Defaults work out of the box, and environment variables can override paths, model names, embedding dimensions, and log level.
+- **Logging** is initialized by `src/retrievr/logging_config.py` and used throughout the services for model loading, indexing, and error diagnostics.
+- **Metadata persistence** is handled by `src/retrievr/services/metadata.py`, which creates and migrates the SQLite `images` table.
+- **Captioning** is isolated in `src/retrievr/services/captioning.py` and falls back to `"An image"` if model inference fails.
+- **Embedding** is isolated in `src/retrievr/services/embedding_service.py`; CLIP models are lazy-loaded and cached for the process.
+- **Vector indexing** is isolated in `src/retrievr/services/vector_index.py`; new embeddings are appended incrementally instead of rebuilding the entire FAISS index.
+- **Image processing orchestration** lives in `src/retrievr/services/image_processing.py`.
+- **Search orchestration** lives in `src/retrievr/services/search_service.py`, which joins FAISS results back to SQLite metadata.
 
-The original top-level modules (`database.py`, `embedding.py`, `processor.py`, and `search.py`) remain as compatibility wrappers so existing imports continue to work while the implementation is modularized under `services/`.
+The application code now lives under the `src/retrievr/` package. Compatibility wrappers (`database.py`, `embedding.py`, `processor.py`, and `search.py`) remain inside that package, while implementation details live under `src/retrievr/services/`.
 
 ## SQLite metadata database
 
@@ -109,7 +112,7 @@ Runtime configuration is environment-driven. All variables are optional.
 Example:
 
 ```bash
-RETRIVR_DB_PATH=data/retrievr.db RETRIVR_LOG_LEVEL=DEBUG streamlit run app.py
+RETRIVR_DB_PATH=data/retrievr.db RETRIVR_LOG_LEVEL=DEBUG streamlit run src/retrievr/app.py
 ```
 
 ## Setup
@@ -132,7 +135,7 @@ The first processing run downloads the BLIP and CLIP model weights from Hugging 
 ### 3. Run the app
 
 ```bash
-streamlit run app.py
+streamlit run src/retrievr/app.py
 ```
 
 Open the local Streamlit URL shown in the terminal.
@@ -167,7 +170,7 @@ Open the local Streamlit URL shown in the terminal.
 Useful checks:
 
 ```bash
-python -m compileall .
+PYTHONPATH=src python -m compileall src/retrievr
 ```
 
 The codebase is structured so future work can add tests around individual services without loading the Streamlit UI.

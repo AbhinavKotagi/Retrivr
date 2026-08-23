@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from services.metadata import metadata_store
-from services.vector_index import vector_index_service
+from retrievr.services.metadata import metadata_store
+from retrievr.services.vector_index import vector_index_service
 
 DB_PATH = str(metadata_store.db_path)
 

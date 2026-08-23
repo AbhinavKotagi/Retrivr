@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from config import settings
-from services.captioning import captioning_service
-from services.image_processing import image_processing_service
+from retrievr.config import settings
+from retrievr.services.captioning import captioning_service
+from retrievr.services.image_processing import image_processing_service
 
 STORAGE_DIR = settings.storage_dir
 VECTORS_DIR = settings.vectors_dir
