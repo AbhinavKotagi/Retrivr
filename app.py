@@ -31,7 +31,9 @@ from pathlib import Path
 import streamlit as st
 from PIL import Image
 
+from config import settings
 from database import init_db, purge_all_data, purge_vector_data
+from logging_config import configure_logging
 from processor import save_uploaded_file, process_image, is_already_processed
 from search import search_images, search_top_caption, index_exists
 
@@ -39,8 +41,8 @@ from search import search_images, search_top_caption, index_exists
 # Bootstrap
 # ============================================================================
 
-Path("storage/images").mkdir(parents=True, exist_ok=True)
-Path("vectors").mkdir(parents=True, exist_ok=True)
+configure_logging()
+settings.ensure_directories()
 init_db()
 
 # ============================================================================
@@ -187,7 +189,7 @@ with st.sidebar:
         deleted_rows = purge_all_data()
 
         # 2. Delete all stored image files from disk
-        images_dir = Path("storage/images")
+        images_dir = settings.storage_dir
         deleted_files = 0
         if images_dir.exists():
             for f in images_dir.iterdir():
