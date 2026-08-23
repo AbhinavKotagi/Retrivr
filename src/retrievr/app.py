@@ -27,20 +27,26 @@ State (st.session_state)
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import streamlit as st
 from PIL import Image
 
-from database import init_db, purge_all_data, purge_vector_data
-from processor import save_uploaded_file, process_image, is_already_processed
-from search import search_images, search_top_caption, index_exists
+from retrievr.config import settings
+from retrievr.database import init_db, purge_all_data, purge_vector_data
+from retrievr.logging_config import configure_logging
+from retrievr.processor import save_uploaded_file, process_image, is_already_processed
+from retrievr.search import search_images, search_top_caption, index_exists
 
 # ============================================================================
 # Bootstrap
 # ============================================================================
 
-Path("storage/images").mkdir(parents=True, exist_ok=True)
-Path("vectors").mkdir(parents=True, exist_ok=True)
+configure_logging()
+settings.ensure_directories()
 init_db()
 
 # ============================================================================
@@ -187,7 +193,7 @@ with st.sidebar:
         deleted_rows = purge_all_data()
 
         # 2. Delete all stored image files from disk
-        images_dir = Path("storage/images")
+        images_dir = settings.storage_dir
         deleted_files = 0
         if images_dir.exists():
             for f in images_dir.iterdir():
