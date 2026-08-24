@@ -1,2 +1,39 @@
+# Python
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Databases
+*.sqlite3
+*.db
+retrievr.db
+
+# Environment variables
+.env
+.env.local
+
+# Vector Search Indices
+vectors/faiss.index
+vectors/id_map.json
+
+# Storage / Datasets
+# Ignore everything in storage except the directory itself (if you want to keep the folder)
+storage/*
+!storage/.gitkeep
+
+# Evaluation Results
+test/results/*.json
+
+# Testing and IDEs
+.pytest_cache/
+.idea/
+.vscode/
+*.swp
+.DS_Store

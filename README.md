@@ -115,13 +115,22 @@ Example:
 RETRIVR_DB_PATH=data/retrievr.db RETRIVR_LOG_LEVEL=DEBUG streamlit run src/retrievr/app.py
 ```
 
-## Setup
+## Setup & Installation
 
-### 1. Create a virtual environment
+### 1. Clone the repository & create virtual environment
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+git clone <your-repo-url>
+cd Retrivr
+
+# Create virtual environment
+python -m venv venv
+
+# Activate (Windows PowerShell):
+venv\Scripts\activate
+
+# Activate (Mac/Linux):
+source venv/bin/activate
 ```
 
 ### 2. Install dependencies
@@ -130,15 +139,55 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-The first processing run downloads the BLIP and CLIP model weights from Hugging Face, so it can take longer than later runs.
+*Note: On the first run, Hugging Face will automatically download BLIP and CLIP model weights locally into `~/.cache/huggingface`.*
 
-### 3. Run the app
+### 3. Run the App
 
 ```bash
-streamlit run src/retrievr/app.py
+# Windows PowerShell:
+$env:PYTHONPATH="src"; streamlit run src/retrievr/app.py
+
+# Windows CMD:
+set PYTHONPATH=src && streamlit run src/retrievr/app.py
+
+# Mac / Linux:
+PYTHONPATH=src streamlit run src/retrievr/app.py
 ```
 
-Open the local Streamlit URL shown in the terminal.
+Open the local Streamlit URL shown in the terminal (usually `http://localhost:8501`).
+
+---
+
+## 📊 Benchmarking & Evaluation Module
+
+Retrievr includes an independent evaluation module located in `test/` for quantitative IR benchmarking against datasets like **Flickr8k**.
+
+It computes 16 standard IR and performance metrics, including:
+- **Recall@K** (K=1, 5, 10, 20)
+- **Precision@K** (K=1, 5, 10, 20)
+- **mAP@10** (Mean Average Precision)
+- **MRR** (Mean Reciprocal Rank)
+- **nDCG@10** (Normalized Discounted Cumulative Gain)
+- **Latency Stats** (Average, Median, P95, Indexing Time)
+
+### Running Evaluation
+
+Place the Flickr8k dataset in `storage/Flickr 8k` or `test/dataset/flickr8k` (or specify `--dataset`), then run:
+
+```bash
+# Quick test (20 images):
+python test/evaluation.py --limit 20
+
+# Medium test (100 images):
+python test/evaluation.py --limit 100
+
+# Full benchmark (~8,000 images):
+python test/evaluation.py
+```
+
+Results will be automatically printed to stdout and saved to `test/results/evaluation_results.json`.
+
+---
 
 ## How to use Retrievr
 
@@ -165,12 +214,3 @@ Open the local Streamlit URL shown in the terminal.
 - Processing is local and CPU-friendly by default, but first model downloads can be slow.
 - Authentication, multi-user storage, and production deployment hardening are not yet implemented.
 
-## Development notes
-
-Useful checks:
-
-```bash
-PYTHONPATH=src python -m compileall src/retrievr
-```
-
-The codebase is structured so future work can add tests around individual services without loading the Streamlit UI.
