@@ -28,6 +28,8 @@ import torch
 from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
 
+from test.embedding_interface import EmbeddingModel
+
 logger = logging.getLogger(__name__)
 
 
@@ -43,9 +45,10 @@ def _select_device() -> torch.device:
     return device
 
 
-class CLIPAdapter:
+class CLIPAdapter(EmbeddingModel):
     """
     Thin wrapper around HuggingFace CLIPModel for the evaluation pipeline.
+    Implements the EmbeddingModel interface.
 
     Parameters
     ----------
@@ -63,33 +66,45 @@ class CLIPAdapter:
         device: torch.device | None = None,
         batch_size: int = 64,
     ) -> None:
-        self.model_name = model_name
+        self._model_name = model_name
         self.device = device if device is not None else _select_device()
         self.batch_size = batch_size
 
         self._model: CLIPModel | None = None
         self._processor: CLIPProcessor | None = None
 
-    # ── Lazy model loading ────────────────────────────────────────────────────────
+    # ── EmbeddingModel properties ─────────────────────────────────────────────
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
+    @property
+    def embedding_dim(self) -> int:
+        """Return the embedding dimension of the loaded model."""
+        model, _ = self._load()
+        return model.config.projection_dim
+
+    # ── Lazy model loading ────────────────────────────────────────────────────
     def _load(self) -> tuple[CLIPModel, CLIPProcessor]:
         if self._model is None or self._processor is None:
-            logger.info("Loading CLIP model: %s", self.model_name)
+            logger.info("Loading CLIP model: %s", self._model_name)
             try:
-                self._processor = CLIPProcessor.from_pretrained(self.model_name)
-                self._model = CLIPModel.from_pretrained(self.model_name)
+                self._processor = CLIPProcessor.from_pretrained(self._model_name)
+                self._model = CLIPModel.from_pretrained(self._model_name)
                 self._model.eval()
                 self._model.to(self.device)
                 logger.info("CLIP model loaded on %s", self.device)
             except Exception as exc:
                 import sys
                 print(
-                    f"\n[ERROR] Could not load CLIP model '{self.model_name}': {exc}",
+                    f"\n[ERROR] Could not load CLIP model '{self._model_name}': {exc}",
                     file=sys.stderr,
                 )
                 sys.exit(1)
         return self._model, self._processor
 
-    # ── Normalisation utility ─────────────────────────────────────────────────────
+    # ── Normalisation utility ─────────────────────────────────────────────────
     @staticmethod
     def _l2_normalise(arr: np.ndarray) -> np.ndarray:
         """Row-wise L2 normalisation."""
@@ -97,7 +112,15 @@ class CLIPAdapter:
         norms = np.where(norms == 0, 1.0, norms)  # avoid division by zero
         return (arr / norms).astype(np.float32)
 
-    # ── Public API ────────────────────────────────────────────────────────────────
+    # ── EmbeddingModel interface ──────────────────────────────────────────────
+
+    def encode_image(
+        self,
+        image: Union[Image.Image, Path, str],
+    ) -> np.ndarray:
+        """Encode a single image. Returns shape (1, D), L2-normalised."""
+        return self.encode_images([image])
+
     def encode_images(
         self,
         images: list[Union[Image.Image, Path, str]],
@@ -213,9 +236,3 @@ class CLIPAdapter:
 
         combined = np.vstack(all_embeddings)
         return self._l2_normalise(combined)
-
-    @property
-    def embedding_dim(self) -> int:
-        """Return the embedding dimension of the loaded model."""
-        model, _ = self._load()
-        return model.config.projection_dim

@@ -4,3 +4,9 @@ transformers
 faiss-cpu
 pillow
 numpy
+# Evaluation dependencies
+open-clip-torch
+imagehash
+scipy
+scikit-learn
+psutil

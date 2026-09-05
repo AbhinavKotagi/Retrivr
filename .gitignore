@@ -24,7 +24,6 @@ vectors/faiss.index
 vectors/id_map.json
 
 # Storage / Datasets
-# Ignore everything in storage except the directory itself (if you want to keep the folder)
 storage/*
 !storage/.gitkeep
 
@@ -37,3 +36,8 @@ test/results/*.json
 .vscode/
 *.swp
 .DS_Store
+
+# DontCommit waste directory
+DontCommit/
+DontCommit/*
+
